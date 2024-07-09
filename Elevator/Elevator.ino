@@ -72,6 +72,7 @@ void loop() {
 
   if (motorTimer) {
     // If we haven't gotten to out destination floor, keep moving
+    AF_DCMotor motor(3);
     motor.run(movingUp ? FORWARD : BACKWARD);
     motor.setSpeed(movingUp ? 140 : 120);
   } else {
