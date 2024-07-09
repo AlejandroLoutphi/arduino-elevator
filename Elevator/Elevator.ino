@@ -21,7 +21,7 @@
 #define DEBUG_BUTTON_PIN   6
 #endif
 
-AF_DCMotor motor(3);
+AF_DCMotor motor(4);
 int8_t pos;
 uint8_t stopTimer;
 // These act as a stack
@@ -82,6 +82,7 @@ void loop() {
         AF_DCMotor motor(3);
         motor.run(posTargets[posTargetsTop - 1] > pos ? FORWARD : BACKWARD);
         motor.setSpeed(posTargets[posTargetsTop - 1] > pos ? 140 : 120);
+        pos += posTargets[posTargetsTop - 1] > pos ? 1 : -1;
       } else {
         // If we've gotten to our destination, stop
         motor.setSpeed(0);
