@@ -22,19 +22,17 @@
 #endif
 
 AF_DCMotor motor(3);
-int8_t currentFloor;
+int8_t pos;
 uint8_t stopTimer;
-uint8_t motorTimer;
-bool movingUp;
 // These act as a stack
-int8_t floorTargets[2];
-int8_t floorTargetsTop;
+int8_t posTargets[2];
+int8_t posTargetsTop;
 
 int8_t addInputToFloorTargets(
-    int8_t currentFloor,
-    int8_t *floorTargets,
-    int8_t floorTargetsTop);
-void irSteup();
+    int8_t pos,
+    int8_t *posTargets,
+    int8_t posTargetsTop);
+void irSetup();
 
 
 void setup() {
@@ -46,12 +44,10 @@ void setup() {
   motor.run(3);
 
   // initialize variables
-  currentFloor = 1;
-  floorTargetsTop = 0;
+  pos = 1;
+  posTargetsTop = 0;
   stopTimer = 0;
-  motorTimer = 0;
-  movingUp = false;
-
+  pos = 0;
 }
 
 void loop() {
@@ -73,69 +69,69 @@ void loop() {
 
     // When we receive a good signal
     if (IrReceiver.decodedIRData.address == 0) {
-      floorTargetsTop = addInputToFloorTargets(currentFloor, floorTargets, floorTargetsTop);
+      posTargetsTop = addInputToFloorTargets(pos, posTargets, posTargetsTop);
     }
   }
 
-  if (motorTimer) {
-    // If we haven't gotten to out destination floor, keep moving
-    AF_DCMotor motor(3);
-    motor.run(movingUp ? FORWARD : BACKWARD);
-    motor.setSpeed(movingUp ? 140 : 120);
-  } else {
-    // If we've gotten to our destination, stop
-    motor.setSpeed(0);
-    if (stopTimer) {
+  if (stopTimer) {
       stopTimer--;
-    } else if (!floorTargetsTop) {
-      // Make  elevator move if we've stopped long enough and need there are still floor targets
-      // Move for longer depending on how many floors are left
-      motorTimer = abs(currentFloor - floorTargets[floorTargetsTop-1]) == 1 ? 100 : 200;
-      movingUp = currentFloor < floorTargets[floorTargetsTop-1];
-      floorTargetsTop--;
+  } else {
+    if (posTargetsTop) {
+      if (pos != posTargets[posTargetsTop - 1]) {
+        // If we haven't gotten to destination floor, keep moving
+        AF_DCMotor motor(3);
+        motor.run(posTargets[posTargetsTop - 1] > pos ? FORWARD : BACKWARD);
+        motor.setSpeed(posTargets[posTargetsTop - 1] > pos ? 140 : 120);
+      } else {
+        // If we've gotten to our destination, stop
+        motor.setSpeed(0);
+        stopTimer = 1000;
+      }
     }
   }
 }
 
 // Returns new floorTargetsTop
 int8_t addInputToFloorTargets(
-    int8_t currentFloor,
-    int8_t *floorTargets,
-    int8_t floorTargetsTop) {
+    int8_t pos,
+    int8_t *posTargets,
+    int8_t posTargetsTop) {
   int8_t tmp;
+
+#define FLOOR_HEIGHT 100
   // Add a new floor target to the stack based on input
-  if (floorTargetsTop < 2) {
+  if (posTargetsTop < 2) {
     switch(IrReceiver.decodedIRData.command) {
       case(12): // 1 Key
-        floorTargets[floorTargetsTop] = 1;
+        posTargets[posTargetsTop] = 0;
         break;
       case(24): // 2 Key
-        floorTargets[floorTargetsTop] = 2;
+        posTargets[posTargetsTop] = FLOOR_HEIGHT;
         break;
       case(94): // 3 Key
-        floorTargets[floorTargetsTop] = 3;
+        posTargets[posTargetsTop] = FLOOR_HEIGHT * 2;
         break;
     }
 
     // If the new floor target is the current floor, discard it
     // If both floor targets are the same, discard one
-    if (floorTargets[floorTargetsTop] == currentFloor ||
-        (floorTargetsTop == 1 && floorTargets[1] == floorTargets[0])) {
-      return floorTargetsTop;
+    if (posTargets[posTargetsTop] == pos ||
+        (posTargetsTop == 1 && posTargets[1] == posTargets[0])) {
+      return posTargetsTop;
     }
 
     // Sort stack with top being highest priority (smallest delta with currentFloor)
     // We only have to do this if both slots are populated
-    if (floorTargetsTop == 1 &&
-        abs(currentFloor - floorTargets[1])
-        > abs(currentFloor - floorTargets[0])) {
+    if (posTargetsTop == 1 &&
+        abs(pos - posTargets[1])
+        > abs(pos - posTargets[0])) {
       //Swap
-      tmp = floorTargets[1];
-      floorTargets[1] = floorTargets[0];
-      floorTargets[0] = tmp;
+      tmp = posTargets[1];
+      posTargets[1] = posTargets[0];
+      posTargets[0] = tmp;
     }
 
-    return floorTargetsTop + 1;
+    return posTargetsTop + 1;
   }
 }
 
