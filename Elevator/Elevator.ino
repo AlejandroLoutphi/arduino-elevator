@@ -3,18 +3,6 @@
 #include <AFMotor.h>
 #include <IRremote.hpp>
 
-#if defined(DECODE_BEO)
-#define RECORD_GAP_MICROS 16000 // always get the complete frame in the receive buffer, but this prevents decoding of SONY!
-#endif
-
-#if !defined(RAW_BUFFER_LENGTH)
-// For air condition remotes it requires 750. Default is 200.
-#  if !((defined(RAMEND) && RAMEND <= 0x4FF) || (defined(RAMSIZE) && RAMSIZE < 0x4FF))
-#define RAW_BUFFER_LENGTH  750
-#  endif
-#endif
-
-
 #if defined(APPLICATION_PIN)
 #define DEBUG_BUTTON_PIN    APPLICATION_PIN // if low, print timing for each received data set
 #else
