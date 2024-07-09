@@ -9,7 +9,7 @@
 #define DEBUG_BUTTON_PIN   6
 #endif
 
-AF_DCMotor motor(4);
+AF_DCMotor motor(3);
 int8_t currentFloor;
 bool receivedSignal;
 
@@ -52,37 +52,50 @@ void loop() {
         */
       IrReceiver.resume();
 
-      // When we receive a good signal
-      if (IrReceiver.decodedIRData.address == 0 && !receivedSignal) {
-        moveElevator();
-        delay(200);
-      }
-
-      receivedSignal = false;
+    // When we receive a good signal
+    if (IrReceiver.decodedIRData.address == 0) {
+      floorTargetsTop = addInputToFloorTargets(currentFloor, floorTargets, floorTargetsTop);
     }
+  }
+
+  if (motorTimer) {
+    // If we haven't gotten to out destination floor, keep moving
+    motor.run(movingUp ? FORWARD : BACKWARD);
+    motor.setSpeed(movingUp ? 140 : 120);
+  } else {
+    // If we've gotten to our destination, stop
+    motor.setSpeed(0);
+    if (stopTimer) {
+      stopTimer--;
+    } else if (!floorTargetsTop) {
+      // Make  elevator move if we've stopped long enough and need there are still floor targets
+      // Move for longer depending on how many floors are left
+      motorTimer = abs(currentFloor - floorTargets[floorTargetsTop-1]) == 1 ? 100 : 200;
+      movingUp = currentFloor < floorTargets[floorTargetsTop-1];
+      floorTargetsTop--;
+    }
+  }
 }
 
-void moveElevator() {
-  receivedSignal = true;
-  int8_t floorDelta = 0;
-  switch(IrReceiver.decodedIRData.command) {
-    case(82): // 8 Key
-      motorRun(150, true);
-      motorRun(150, false);
-      break;
-    case(12): // 1 Key
-      floorDelta = 1 - currentFloor;
-      currentFloor = 1;
-      break;
-    case(24): // 2 Key
-      floorDelta = 2 - currentFloor;
-      currentFloor = 2;
-      break;
-    case(94): // 3 Key
-      floorDelta = 3 - currentFloor;
-      currentFloor = 3;
-      break;
-  }
+// Returns new floorTargetsTop
+int8_t addInputToFloorTargets(
+    int8_t currentFloor,
+    int8_t *floorTargets,
+    int8_t floorTargetsTop) {
+  int8_t tmp;
+  // Add a new floor target to the stack based on input
+  if (floorTargetsTop < 2) {
+    switch(IrReceiver.decodedIRData.command) {
+      case(12): // 1 Key
+        floorTargets[floorTargetsTop] = 1;
+        break;
+      case(24): // 2 Key
+        floorTargets[floorTargetsTop] = 2;
+        break;
+      case(94): // 3 Key
+        floorTargets[floorTargetsTop] = 3;
+        break;
+    }
 
   Serial.println(currentFloor);
   Serial.println(floorDelta);
