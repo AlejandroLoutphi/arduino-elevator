@@ -23,110 +23,119 @@
 
 AF_DCMotor motor(4);
 int8_t currentFloor;
-bool receivedSignal;
+uint8_t stopTimer;
+uint8_t motorTimer;
+bool movingUp;
+// These act as a stack
+int8_t floorTargets[2];
+int8_t floorTargetsTop;
 
-void moveElevator();
-void motorRun();
+int8_t addInputToFloorTargets(
+    int8_t currentFloor,
+    int8_t *floorTargets,
+    int8_t floorTargetsTop);
 void irSteup();
 
+
 void setup() {
+  // Setup for the IR receiver
   irSetup();
 
   // turn on motor
   motor.setSpeed(20);
- 
   motor.run(3);
-  receivedSignal = false;
+
+  // initialize variables
   currentFloor = 1;
+  floorTargetsTop = 0;
+  stopTimer = 0;
+  motorTimer = 0;
+  movingUp = false;
+
 }
 
 void loop() {
-    /*
-     * Check if received data is available and if yes, try to decode it.
-     * Decoded result is in the IrReceiver.decodedIRData structure.
-     *
-     * E.g. command is in IrReceiver.decodedIRData.command
-     * address is in command is in IrReceiver.decodedIRData.address
-     * and up to 32 bit raw data in IrReceiver.decodedIRData.decodedRawData
-     */
-    if (IrReceiver.decode()) {
-        Serial.println();
-
-      // Print Pressed button id (aka command)
-      if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_WAS_OVERFLOW) && IrReceiver.decodedIRData.protocol != UNKNOWN) {
-        Serial.println(IrReceiver.decodedIRData.command);
-      }
-
-      /*
-        * !!!Important!!! Enable receiving of the next value, because receiving
-        * has stopped after the end of the current received data packet.
-        * Do it here, to preserve raw data for printing with printIRResultRawFormatted()
-        */
-      IrReceiver.resume();
-
-      // When we receive a good signal
-      if (IrReceiver.decodedIRData.address == 0 && !receivedSignal) {
-        moveElevator();
-        delay(200);
-      }
-
-      receivedSignal = false;
+  /*
+    * Check if received data is available and if yes, try to decode it.
+    * Decoded result is in the IrReceiver.decodedIRData structure.
+    *
+    * E.g. command is in IrReceiver.decodedIRData.command
+    * address is in command is in IrReceiver.decodedIRData.address
+    * and up to 32 bit raw data in IrReceiver.decodedIRData.decodedRawData
+    */
+  if (IrReceiver.decode()) {
+    // Print Pressed button id (aka command)
+    if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_WAS_OVERFLOW) && IrReceiver.decodedIRData.protocol != UNKNOWN) {
+      Serial.println(IrReceiver.decodedIRData.command);
     }
-}
 
-void moveElevator() {
-  receivedSignal = true;
-  int8_t floorDelta = 0;
-  switch(IrReceiver.decodedIRData.command) {
-    case(82): // 8 Key
-      motorRun(150, true);
-      motorRun(150, false);
-      break;
-    case(12): // 1 Key
-      floorDelta = 1 - currentFloor;
-      currentFloor = 1;
-      break;
-    case(24): // 2 Key
-      floorDelta = 2 - currentFloor;
-      currentFloor = 2;
-      break;
-    case(94): // 3 Key
-      floorDelta = 3 - currentFloor;
-      currentFloor = 3;
-      break;
+    IrReceiver.resume();
+
+    // When we receive a good signal
+    if (IrReceiver.decodedIRData.address == 0) {
+      floorTargetsTop = addInputToFloorTargets(currentFloor, floorTargets, floorTargetsTop);
+    }
   }
 
-  Serial.println(currentFloor);
-  Serial.println(floorDelta);
-  if (floorDelta == 0) {
-    return;
+  if (motorTimer) {
+    // If we haven't gotten to out destination floor, keep moving
+    motor.run(movingUp ? FORWARD : BACKWARD);
+    motor.setSpeed(movingUp ? 140 : 120);
+  } else {
+    // If we've gotten to our destination, stop
+    motor.setSpeed(0);
+    if (stopTimer) {
+      stopTimer--;
+    } else if (!floorTargetsTop) {
+      // Make  elevator move if we've stopped long enough and need there are still floor targets
+      // Move for longer depending on how many floors are left
+      motorTimer = abs(currentFloor - floorTargets[floorTargetsTop-1]) == 1 ? 100 : 200;
+      movingUp = currentFloor < floorTargets[floorTargetsTop-1];
+      floorTargetsTop--;
+    }
   }
-  bool up = floorDelta > 0;
-  floorDelta = abs(floorDelta);
-  motorRun(floorDelta == 1 ? 500 : 1000, up);
 }
 
-void motorRun(uint8_t maxSpeed, bool up) {
-  uint8_t i;
-    
-  Serial.print("tick");
- 
-  AF_DCMotor motor(3);
+// Returns new floorTargetsTop
+int8_t addInputToFloorTargets(
+    int8_t currentFloor,
+    int8_t *floorTargets,
+    int8_t floorTargetsTop) {
+  int8_t tmp;
+  // Add a new floor target to the stack based on input
+  if (floorTargetsTop < 2) {
+    switch(IrReceiver.decodedIRData.command) {
+      case(12): // 1 Key
+        floorTargets[floorTargetsTop] = 1;
+        break;
+      case(24): // 2 Key
+        floorTargets[floorTargetsTop] = 2;
+        break;
+      case(94): // 3 Key
+        floorTargets[floorTargetsTop] = 3;
+        break;
+    }
 
-  motor.run(up ? FORWARD : BACKWARD);
-  /*for (i=0; i < maxSpeed; i++) {
-    motor.setSpeed(i);  
-    delay(10);
- }
- 
-  for (i = maxSpeed; i!=0; i--) {
-    motor.setSpeed(i);  
-    delay(10);
- }*/
+    // If the new floor target is the current floor, discard it
+    // If both floor targets are the same, discard one
+    if (floorTargets[floorTargetsTop] == currentFloor ||
+        (floorTargetsTop == 1 && floorTargets[1] == floorTargets[0])) {
+      return floorTargetsTop;
+    }
 
- motor.setSpeed(up ? 140 : 120);
- delay(maxSpeed);
- motor.setSpeed(0);
+    // Sort stack with top being highest priority (smallest delta with currentFloor)
+    // We only have to do this if both slots are populated
+    if (floorTargetsTop == 1 &&
+        abs(currentFloor - floorTargets[1])
+        > abs(currentFloor - floorTargets[0])) {
+      //Swap
+      tmp = floorTargets[1];
+      floorTargets[1] = floorTargets[0];
+      floorTargets[0] = tmp;
+    }
+
+    return floorTargetsTop + 1;
+  }
 }
 
 void irSetup() {
