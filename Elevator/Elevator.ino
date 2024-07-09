@@ -21,7 +21,7 @@
 #define DEBUG_BUTTON_PIN   6
 #endif
 
-AF_DCMotor motor(4);
+AF_DCMotor motor(3);
 int8_t currentFloor;
 uint8_t stopTimer;
 uint8_t motorTimer;
@@ -79,6 +79,7 @@ void loop() {
 
   if (motorTimer) {
     // If we haven't gotten to out destination floor, keep moving
+    AF_DCMotor motor(3);
     motor.run(movingUp ? FORWARD : BACKWARD);
     motor.setSpeed(movingUp ? 140 : 120);
   } else {
